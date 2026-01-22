@@ -1,0 +1,1257 @@
+openapi: 3.1.0
+info:
+  title: AlchemixAPI
+  version: 1.0.0
+  description: |
+    OpenAI-compatible API proxy with advanced management features including:
+    - API key management with role-based access
+    - Usage tracking and analytics
+    - Rate limiting per plan
+    - Request/response logging
+    - Multi-model support
+
+    ## Authentication
+    All API endpoints require authentication via Bearer token in the `Authorization` header.
+
+    ```
+    Authorization: Bearer sk-YOUR_API_KEY
+    ```
+
+    ## Rate Limiting
+    Rate limits are configured per plan and enforced at three levels:
+    - Per minute
+    - Per hour
+    - Per day
+
+    Rate limit headers are included in all responses:
+    - `X-RateLimit-Limit-Minute`: Requests allowed per minute
+    - `X-RateLimit-Remaining-Minute`: Remaining requests this minute
+    - `X-RateLimit-Reset-Minute`: Unix timestamp when minute limit resets
+
+  contact:
+    name: AlchemixAPI Support
+    url: https://github.com/your-repo/AlchemixAPI
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.alcahest.moe
+    description: Production API server
+
+tags:
+  - name: OpenAI Compatible
+    description: OpenAI-compatible API endpoints
+  - name: API Keys
+    description: API key management (admin only)
+  - name: Plans
+    description: Usage plans management
+  - name: Requests
+    description: Request logging and analytics
+  - name: Health
+    description: Service health check
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ==================== OpenAI Compatible Endpoints ====================
+
+  /v1/chat/completions:
+    post:
+      tags:
+        - OpenAI Compatible
+      summary: Create chat completion
+      description: |
+        Creates a model response for the given chat conversation.
+        Compatible with OpenAI Chat Completions API.
+      operationId: createChatCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+            examples:
+              simple:
+                summary: Simple chat completion
+                value:
+                  model: gpt-4o
+                  messages:
+                    - role: user
+                      content: "Hello, how are you?"
+              withSystemMessage:
+                summary: With system message
+                value:
+                  model: gpt-4o
+                  messages:
+                    - role: system
+                      content: "You are a helpful assistant."
+                    - role: user
+                      content: "What is the capital of France?"
+                  temperature: 0.7
+                  max_tokens: 100
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-RateLimit-Limit-Minute:
+              schema:
+                type: integer
+              description: Request limit per minute
+            X-RateLimit-Remaining-Minute:
+              schema:
+                type: integer
+              description: Remaining requests this minute
+            X-RateLimit-Reset-Minute:
+              schema:
+                type: integer
+              description: Unix timestamp when limit resets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/audio/transcriptions:
+    post:
+      tags:
+        - OpenAI Compatible
+      summary: Transcribe audio to text
+      description: |
+        Transcribes audio into the input language using Google Speech-to-Text API.
+        Compatible with OpenAI Audio API.
+      operationId: createTranscription
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - model
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file to transcribe (mp3, wav, ogg, webm, flac)
+                model:
+                  type: string
+                  example: whisper-1
+                  description: Model ID (use 'whisper-1' for compatibility)
+                language:
+                  type: string
+                  example: en-US
+                  description: Language code (e.g., en-US, it-IT, fr-FR)
+                response_format:
+                  type: string
+                  enum: [json, text, srt, vtt, verbose_json]
+                  default: json
+                  description: Format of the response
+      responses:
+        '200':
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      text:
+                        type: string
+                        example: "Hello, how are you?"
+                  - type: object
+                    properties:
+                      task:
+                        type: string
+                        example: transcribe
+                      language:
+                        type: string
+                      duration:
+                        type: number
+                      text:
+                        type: string
+                      segments:
+                        type: array
+                        items:
+                          type: object
+            text/plain:
+              schema:
+                type: string
+            text/vtt:
+              schema:
+                type: string
+            application/x-subrip:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/audio/translations:
+    post:
+      tags:
+        - OpenAI Compatible
+      summary: Translate audio to English
+      description: |
+        Translates audio into English (not implemented yet).
+      operationId: createTranslation
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - model
+              properties:
+                file:
+                  type: string
+                  format: binary
+                model:
+                  type: string
+                  example: whisper-1
+      responses:
+        '501':
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/models:
+    get:
+      tags:
+        - OpenAI Compatible
+      summary: List available models
+      description: Lists the currently available models
+      operationId: listModels
+      security: []
+      responses:
+        '200':
+          description: List of models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    example: list
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          example: gpt-4o
+                        object:
+                          type: string
+                          example: model
+                        created:
+                          type: integer
+                        owned_by:
+                          type: string
+                          example: chatsmith
+
+  # ==================== API Key Management ====================
+
+  /v1/api-keys/list:
+    get:
+      tags:
+        - API Keys
+      summary: List all API keys
+      description: Returns a list of all API keys (admin only)
+      operationId: listApiKeys
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Forbidden - Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/api-keys/create:
+    post:
+      tags:
+        - API Keys
+      summary: Create new API key
+      description: Creates a new API key with specified plan and permissions (admin only)
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "Client API Key"
+                role:
+                  type: string
+                  enum: [admin, user]
+                  default: user
+                plan_name:
+                  type: string
+                  example: "Pro"
+                  default: "Free"
+                allowed_models:
+                  type: array
+                  items:
+                    type: string
+                  example: ["gpt-4o", "gpt-4o-mini"]
+                allowed_endpoints:
+                  type: array
+                  items:
+                    type: string
+                  example: ["/v1/chat/completions"]
+      responses:
+        '200':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  api_key:
+                    type: string
+                  name:
+                    type: string
+                  role:
+                    type: string
+                  plan:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v1/api-keys/{key_id}:
+    put:
+      tags:
+        - API Keys
+      summary: Update API key
+      description: Updates an existing API key (admin only)
+      operationId: updateApiKey
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApiKeyRequest'
+      responses:
+        '200':
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - API Keys
+      summary: Delete API key
+      description: Deletes an API key (admin only)
+      operationId: deleteApiKey
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: API key deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  id:
+                    type: integer
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v1/api-keys/{key_id}/usage:
+    get:
+      tags:
+        - API Keys
+      summary: Get API key usage statistics
+      description: Returns usage statistics for a specific API key
+      operationId: getApiKeyUsage
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v1/api-keys/{key_id}/stats:
+    get:
+      tags:
+        - API Keys
+      summary: Get detailed API key statistics
+      description: Returns detailed statistics for a specific API key
+      operationId: getApiKeyStats
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detailed statistics
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v1/api-keys/{key_id}/plan:
+    put:
+      tags:
+        - API Keys
+      summary: Update API key plan
+      description: Changes the plan for a specific API key (admin only)
+      operationId: updateApiKeyPlan
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - plan_name
+              properties:
+                plan_name:
+                  type: string
+                  example: "Pro"
+      responses:
+        '200':
+          description: Plan updated
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v1/api-keys/{key_id}/reset-quota:
+    post:
+      tags:
+        - API Keys
+      summary: Reset monthly quota
+      description: Resets monthly quota for a specific API key (admin only)
+      operationId: resetApiKeyQuota
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Quota reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  quota_reset:
+                    type: boolean
+                  new_reset_date:
+                    type: integer
+
+  # ==================== Plans Management ====================
+
+  /v1/plans:
+    get:
+      tags:
+        - Plans
+      summary: List all plans
+      description: Returns a list of all available usage plans
+      operationId: listPlans
+      responses:
+        '200':
+          description: List of plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Plans
+      summary: Create custom plan
+      description: Creates a new custom usage plan (admin only)
+      operationId: createPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - display_name
+              properties:
+                name:
+                  type: string
+                display_name:
+                  type: string
+                rate_limit_per_minute:
+                  type: integer
+                rate_limit_per_hour:
+                  type: integer
+                rate_limit_per_day:
+                  type: integer
+                quota_monthly:
+                  type: integer
+                default_allowed_models:
+                  type: array
+                  items:
+                    type: string
+                default_allowed_endpoints:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+
+  /v1/plans/{plan_name}:
+    put:
+      tags:
+        - Plans
+      summary: Update plan
+      description: Updates an existing plan (admin only)
+      operationId: updatePlan
+      parameters:
+        - name: plan_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Plan updated
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Plans
+      summary: Delete plan
+      description: Deletes a custom plan (admin only, cannot delete default plans)
+      operationId: deletePlan
+      parameters:
+        - name: plan_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plan deleted
+        '400':
+          description: Cannot delete default plans
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ==================== Dashboard & Analytics ====================
+
+  /api/dashboard:
+    get:
+      tags:
+        - Analytics
+      summary: Get dashboard data
+      description: Returns comprehensive dashboard statistics (internal use by web UI)
+      operationId: getDashboard
+      security: []
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                  keys:
+                    type: array
+                  requests:
+                    type: array
+                  plans:
+                    type: array
+
+  # ==================== Health Check ====================
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the health status of the API
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+
+# ==================== Components ====================
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: |
+        API key in the format `sk-XXXXX`. Include in the Authorization header as `Bearer sk-XXXXX`
+
+  schemas:
+    # OpenAI Compatible Schemas
+
+    ChatCompletionRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          description: ID of the model to use
+          example: gpt-4o
+          enum:
+            - gpt-4o
+        messages:
+          type: array
+          description: List of messages comprising the conversation
+          items:
+            type: object
+            required:
+              - role
+              - content
+            properties:
+              role:
+                type: string
+                enum: [system, user, assistant]
+                description: The role of the message author
+              content:
+                type: string
+                description: The content of the message
+              name:
+                type: string
+                description: Optional name of the author
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 1
+          description: Sampling temperature between 0 and 2
+        max_tokens:
+          type: integer
+          description: Maximum number of tokens to generate
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1
+          description: Nucleus sampling parameter
+        n:
+          type: integer
+          default: 1
+          description: Number of completions to generate
+        stream:
+          type: boolean
+          default: false
+          description: Whether to stream partial results
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Sequences where the API will stop generating
+        presence_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+        frequency_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+        user:
+          type: string
+          description: Unique identifier for the end-user
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the completion
+          example: "chatcmpl-abc123"
+        object:
+          type: string
+          example: "chat.completion"
+        created:
+          type: integer
+          description: Unix timestamp of when the completion was created
+          example: 1769028846
+        model:
+          type: string
+          example: "gpt-4o"
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              message:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    example: "assistant"
+                  content:
+                    type: string
+                    example: "Hello! I'm doing well, thank you for asking."
+              finish_reason:
+                type: string
+                enum: [stop, length, content_filter, null]
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+    SpeechRequest:
+      type: object
+      required:
+        - model
+        - input
+        - voice
+      properties:
+        model:
+          type: string
+          enum: [tts-1, tts-1-hd]
+          description: TTS model to use
+        input:
+          type: string
+          maxLength: 4096
+          description: Text to generate audio for
+        voice:
+          type: string
+          enum: [alloy, echo, fable, onyx, nova, shimmer]
+          description: Voice to use for generation
+        response_format:
+          type: string
+          enum: [mp3, opus, aac, flac]
+          default: mp3
+          description: Audio format
+        speed:
+          type: number
+          minimum: 0.25
+          maximum: 4.0
+          default: 1.0
+          description: Playback speed
+
+    ImageGenerationRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          maxLength: 4000
+          description: Text description of the desired image
+        model:
+          type: string
+          enum: [dall-e-2, dall-e-3]
+          default: dall-e-2
+        n:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 1
+          description: Number of images to generate
+        size:
+          type: string
+          enum: ["256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"]
+          default: "1024x1024"
+        quality:
+          type: string
+          enum: [standard, hd]
+          default: standard
+        response_format:
+          type: string
+          enum: [url, b64_json]
+          default: url
+
+    ImageGenerationResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+                format: uri
+              b64_json:
+                type: string
+              revised_prompt:
+                type: string
+
+    # Management Schemas
+
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        key:
+          type: string
+          description: API key (only shown on creation)
+          example: "sk-abc123def456..."
+        name:
+          type: string
+          example: "Production API Key"
+        role:
+          type: string
+          enum: [admin, user]
+          example: "user"
+        plan_id:
+          type: integer
+          example: 2
+        plan_name:
+          type: string
+          example: "Pro"
+        allowed_models:
+          type: array
+          items:
+            type: string
+          example: ["gpt-4o", "gpt-4o-mini"]
+          nullable: true
+        allowed_endpoints:
+          type: array
+          items:
+            type: string
+          example: ["/v1/chat/completions", "/v1/audio/speech"]
+          nullable: true
+        created_at:
+          type: integer
+          description: Unix timestamp
+          example: 1769028846
+        last_used_at:
+          type: integer
+          description: Unix timestamp
+          example: 1769028900
+          nullable: true
+        is_active:
+          type: boolean
+          example: true
+        usage:
+          type: object
+          properties:
+            requests_minute:
+              type: integer
+              example: 5
+            requests_hour:
+              type: integer
+              example: 120
+            requests_day:
+              type: integer
+              example: 850
+
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+        - plan_id
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "Client API Key"
+        plan_id:
+          type: integer
+          minimum: 1
+          example: 2
+        allowed_models:
+          type: array
+          items:
+            type: string
+          description: Optional - restricts to specific models. Empty = use plan defaults
+          example: ["gpt-4o", "gpt-4o-mini"]
+        allowed_endpoints:
+          type: array
+          items:
+            type: string
+          description: Optional - restricts to specific endpoints. Empty = use plan defaults
+          example: ["/v1/chat/completions"]
+
+    UpdateApiKeyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        plan_id:
+          type: integer
+          minimum: 1
+        allowed_models:
+          type: array
+          items:
+            type: string
+          nullable: true
+        allowed_endpoints:
+          type: array
+          items:
+            type: string
+          nullable: true
+        is_active:
+          type: boolean
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 2
+        name:
+          type: string
+          example: "Pro"
+        description:
+          type: string
+          example: "Professional tier with higher limits"
+        rate_limits:
+          type: object
+          properties:
+            per_minute:
+              type: integer
+              example: 60
+            per_hour:
+              type: integer
+              example: 1000
+            per_day:
+              type: integer
+              example: 10000
+        default_allowed_models:
+          type: array
+          items:
+            type: string
+          example: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
+        default_allowed_endpoints:
+          type: array
+          items:
+            type: string
+          example: ["/v1/chat/completions", "/v1/audio/speech", "/v1/images/generations"]
+
+    RequestLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        api_key_id:
+          type: integer
+          example: 5
+        key_name:
+          type: string
+          example: "Production Key"
+        endpoint:
+          type: string
+          example: "/v1/chat/completions"
+        method:
+          type: string
+          example: "POST"
+        ip:
+          type: string
+          example: "192.168.1.100"
+        status_code:
+          type: integer
+          example: 200
+        duration_ms:
+          type: number
+          example: 1234.56
+        model_used:
+          type: string
+          example: "gpt-4o"
+          nullable: true
+        tokens_used:
+          type: integer
+          example: 150
+          nullable: true
+        created_at:
+          type: integer
+          description: Unix timestamp
+          example: 1769028846
+        request_body:
+          type: string
+          description: JSON string of request body
+          nullable: true
+        response_body:
+          type: string
+          description: JSON string of response body
+          nullable: true
+        denied_reason:
+          type: string
+          description: Reason if request was denied
+          nullable: true
+
+    RequestStats:
+      type: object
+      properties:
+        total_requests:
+          type: integer
+          example: 15420
+        successful_requests:
+          type: integer
+          example: 14890
+        failed_requests:
+          type: integer
+          example: 530
+        average_duration_ms:
+          type: number
+          example: 856.32
+        total_tokens:
+          type: integer
+          example: 2450000
+        requests_by_model:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            gpt-4o: 8500
+            gpt-4o-mini: 6920
+        requests_by_status:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            "200": 14890
+            "429": 320
+            "403": 210
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: "Invalid API key provided"
+            type:
+              type: string
+              example: "authentication_error"
+            code:
+              type: string
+              example: "invalid_api_key"
+
+  responses:
+    UnauthorizedError:
+      description: Authentication failed - Invalid or missing API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              message: "Invalid API key provided"
+              type: "authentication_error"
+              code: "invalid_api_key"
+
+    ForbiddenError:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            modelNotAllowed:
+              summary: Model not allowed
+              value:
+                error:
+                  message: "Model 'gpt-4' is not allowed for this API key"
+                  type: "permission_denied"
+                  code: "model_not_allowed"
+            endpointNotAllowed:
+              summary: Endpoint not allowed
+              value:
+                error:
+                  message: "Endpoint '/v1/images/generations' is not allowed for this API key"
+                  type: "permission_denied"
+                  code: "endpoint_not_allowed"
+
+    RateLimitError:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit-Minute:
+          schema:
+            type: integer
+        X-RateLimit-Remaining-Minute:
+          schema:
+            type: integer
+            example: 0
+        X-RateLimit-Reset-Minute:
+          schema:
+            type: integer
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              message: "Rate limit exceeded. Limit: 60 requests per minute"
+              type: "rate_limit_error"
+              code: "rate_limit_exceeded"
+
+    BadRequestError:
+      description: Bad request - Invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              message: "Invalid request parameters"
+              type: "invalid_request_error"
+              code: "invalid_parameters"
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              message: "Resource not found"
+              type: "not_found_error"
+              code: "resource_not_found"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              message: "An internal error occurred"
+              type: "server_error"
+              code: "internal_error"
